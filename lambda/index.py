@@ -3,6 +3,7 @@ import json
 import os
 import boto3
 import re  # 正規表現モジュールをインポート
+import urllib.request
 from botocore.exceptions import ClientError
 
 
@@ -56,49 +57,76 @@ def lambda_handler(event, context):
         
         # Nova Liteモデル用のリクエストペイロードを構築
         # 会話履歴を含める
-        bedrock_messages = []
-        for msg in messages:
-            if msg["role"] == "user":
-                bedrock_messages.append({
-                    "role": "user",
-                    "content": [{"text": msg["content"]}]
-                })
-            elif msg["role"] == "assistant":
-                bedrock_messages.append({
-                    "role": "assistant", 
-                    "content": [{"text": msg["content"]}]
-                })
+        # bedrock_messages = []
+        # for msg in messages:
+        #     if msg["role"] == "user":
+        #         bedrock_messages.append({
+        #             "role": "user",
+        #             "content": [{"text": msg["content"]}]
+        #         })
+        #     elif msg["role"] == "assistant":
+        #         bedrock_messages.append({
+        #             "role": "assistant", 
+        #             "content": [{"text": msg["content"]}]
+        #         })
         
         # invoke_model用のリクエストペイロード
+        # request_payload = {
+        #     "messages": bedrock_messages,
+        #     "inferenceConfig": {
+        #         "maxTokens": 512,
+        #         "stopSequences": [],
+        #         "temperature": 0.7,
+        #         "topP": 0.9
+        #     }
+        # }
+        
+        # POST先URLの設定
+        url = 'https://afd3-35-197-22-62.ngrok-free.app/generate'
+
+        # fastAPI用のリクエストペイロード
         request_payload = {
-            "messages": bedrock_messages,
-            "inferenceConfig": {
-                "maxTokens": 512,
-                "stopSequences": [],
-                "temperature": 0.7,
-                "topP": 0.9
-            }
+            "prompt": message,
+            "max_new_tokens": 512,
+            "do_sample": true,
+            "temperature": 0.7,
+            "top_p": 0.9
+        }
+
+        # ヘッダの設定
+        headers = {
+            'Content-Type': 'application/json',
         }
         
+        # APIへのリクエスト
+        req = urllib.request.Request(url, json.dumps(request_payload).encode(), headers)
+
         print("Calling Bedrock invoke_model API with payload:", json.dumps(request_payload))
+
+        with urllib.request.urlopen(req) as res:
+            response_body = res.read()
         
         # invoke_model APIを呼び出し
-        response = bedrock_client.invoke_model(
-            modelId=MODEL_ID,
-            body=json.dumps(request_payload),
-            contentType="application/json"
-        )
+        # response = bedrock_client.invoke_model(
+        #     modelId=MODEL_ID,
+        #     body=json.dumps(request_payload),
+        #     contentType="application/json"
+        # )
         
         # レスポンスを解析
-        response_body = json.loads(response['body'].read())
+        # response_body = json.loads(response['body'].read())
         print("Bedrock response:", json.dumps(response_body, default=str))
         
         # 応答の検証
-        if not response_body.get('output') or not response_body['output'].get('message') or not response_body['output']['message'].get('content'):
+        # if not response_body.get('output') or not response_body['output'].get('message') or not response_body['output']['message'].get('content'):
+        #     raise Exception("No response content from the model")
+
+        # 応答の検証(fastAPI向け)
+        if not response_body.get('generated_text'):
             raise Exception("No response content from the model")
         
         # アシスタントの応答を取得
-        assistant_response = response_body['output']['message']['content'][0]['text']
+        assistant_response = response_body['generated_text']
         
         # アシスタントの応答を会話履歴に追加
         messages.append({
